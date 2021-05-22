@@ -104,12 +104,16 @@ int main()
 {
 	try {
 
-		if (numberOfRealization == 0) {
+		if (numberOfRealization == 1) {
 			get_matrixs_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);//получаем данные по матрицам из файла
 		}
 		else {
 			get_matrixs_transpose_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
 		}
+
+
+
+
 
 		deviceID = InformationAboutDevice(&platformID, numberOfDevice);
 
@@ -123,7 +127,76 @@ int main()
 			throw "Error: Failed to create a compute context!\n";
 		}
 
-		get_kernel_code_from_file();
+
+
+		// получаем код кернела
+		if (numberOfRealization == 1) {
+			get_kernel_code_from_file();
+		}
+		else if (numberOfRealization == 2) {
+			
+			const string kernelSource = "#define COLSROWS " + to_string(NKM[1]) + "\r\n"
+				"//как только кернел выполнится всей локальной группой(она закончится), то его начнет выполнять следующая лок группа\r\n"
+				"kernel void matricesMul(global const float* in1, global const float* in2, global float* out, int COLSROWSs, int COLS2)\r\n"
+				"	{\r\n"
+				"	\r\n"
+				"	int r = get_global_id(0);//не дает пересекаться локальным группам,у нас всегда есть общаа работа( global work size)\r\n"
+			"	//и этот индекс уникальный для каждого треда, который может быть частью локальной группы\r\n"
+			"\r\n"
+				"	\r\n"
+				"	\r\n"
+				"	//for(int i=0; i<COLSROWS; i++){\r\n"
+				"		//rowbuf[i] = in1[ r * COLSROWS + i ]; \r\n"
+				"	//printf(\"\nrowbuf[%d] = %f, r = %d, Collsrows = %d\", i, rowbuf[i], r, COLSROWS);\r\n"
+				"	//}\r\n"
+				"	\r\n"
+				"	\r\n"
+				"	float rowbuf[COLSROWS]; \r\n"
+				"	for (int col = 0; col < COLSROWS; col++)\r\n"
+					"		rowbuf[col] = in1[r * COLSROWS + col]; \r\n"
+					"	\r\n"
+					"int idlocal = get_local_id(0);//в данном случае нужен чтобы перенести 1 элемент\r\n"
+			"int nlocal = get_local_size(0);//также нужен чтобы перенести 1 элемент и не позволить носить дальше в for'е\r\n"
+				"	\r\n"
+					"//printf(\"\nidlocal = %d\", idlocal);\r\n"
+					"	//printf(\"\nnlocal = %d\", nlocal);\r\n"
+					"	\r\n"
+					"local float colbuf[COLSROWS]; \r\n"
+					"	\r\n"
+					"float sum; \r\n"
+					"for (int c = 0; c < COLS2; c++)//вычисление всей строки матрицы\r\n"
+					"{\r\n"
+					"	for (int cr = idlocal; cr < COLSROWS; cr = cr + nlocal)\r\n"
+						"	{\r\n"
+						"		colbuf[cr] = in2[cr + c * COLSROWS]; \r\n"
+						"		//printf(\"\ncolbuf[%d] = %f, idLocal = %d\", cr, colbuf[cr],  idlocal);\r\n"
+						"	}\r\n"
+						"		\r\n"
+						"		\r\n"
+						"	barrier(CLK_LOCAL_MEM_FENCE); //барьер ожидает пока все потоки не перенесут по1 элементу в общий массив colbuf \r\n"
+				"\r\n"
+					"	//тут каждый поток считает элементы для своей строки используя общий локальный массив(столбец\r\n"
+					"	//матрицы) одновременно\r\n"
+					"	\r\n"
+					"	sum = 0.0; \r\n"
+					"	for (int cr = 0; cr < COLSROWS; cr++)//вычисление элемента матрицы\r\n"
+						"	sum += rowbuf[cr] * colbuf[cr];//rowbuf - у каждого потока своя строка которую он умножает на общий столбец\r\n"
+				"out[r * COLS2 + c] = sum; \r\n"
+						"}\r\n"
+					"}"
+				
+				
+				
+				;
+		}
+		else if (numberOfRealization == 3) {
+
+		}
+		
+
+
+
+
 
 		queue = clCreateCommandQueue(context, deviceID, CL_QUEUE_PROFILING_ENABLE, &status);
 		if (!queue)
@@ -400,6 +473,7 @@ void multipl_matrix_local_memory(cl_context context, cl_int status, cl_command_q
 	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &arg_buffer_a);
 	status |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &arg_buffer_b);
 	status |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &arg_buffer_c);
+	//status |= clSetKernelArg(kernel, 3, sizeof(float) * matrix1Columns, NULL);//matrix1Rows вроде не правильно
 	status |= clSetKernelArg(kernel, 3, sizeof(int), &matrix1Columns);
 	status |= clSetKernelArg(kernel, 4, sizeof(int), &matrix2Columns);//в отличие от нетранспонированной матрицы эти значения меняются
 	if (status != CL_SUCCESS)
@@ -408,10 +482,12 @@ void multipl_matrix_local_memory(cl_context context, cl_int status, cl_command_q
 	}
 
 
-	size_t dimentions = 2;
-	size_t global_work_size[2];
+	size_t dimentions = 1;
+	size_t global_work_size[1];
 	global_work_size[0] = matrix1Rows;
-	global_work_size[1] = matrix2Columns;
+
+	size_t local_work_size[1];
+	local_work_size[0] = 250;//250 выбирало по-умолчанию для матриц 500 на 500, поэтому тут я вписал 250
 
 	cl_event ourEvent = 0;
 

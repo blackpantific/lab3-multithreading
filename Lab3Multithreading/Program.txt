@@ -1,3 +1,5 @@
+#define COLSROWS 500
+
 kernel void matrix_multiplication(global const float* a, global const float* b, global float* c, int wA, int wB)
 {
 	int tx = get_global_id(0); 
@@ -14,15 +16,53 @@ kernel void matrix_multiplication(global const float* a, global const float* b, 
    c[ty * wB + tx] = value;
 }
 
-kernel void matricesMul(global const float* in1, global const float* in2, global float* out, int COLSROWS, int COLS2)
+//как только кернел выполнится всей локальной группой(она закончится), то его начнет выполнять следующая лок группа
+kernel void matricesMul(global const float* in1, global const float* in2, global float* out, int COLSROWSs, int COLS2)
 {
 
-    int r = get_global_id( 0 );
-    int c = get_global_id( 1 );  
+         int r = get_global_id( 0 );//не дает пересекаться локальным группам,у нас всегда есть общаа работа( global work size)
+         //и этот индекс уникальный для каждого треда, который может быть частью локальной группы
 
-    for( int cr = 0; cr < COLSROWS; cr ++ )
-        out[ r * COLS2 + c ] += in1[ r * COLSROWS + cr ] * in2[ cr + c * COLSROWS ];
 
+
+         //for(int i=0; i<COLSROWS; i++){
+             //rowbuf[i] = in1[ r * COLSROWS + i ]; 
+             //printf("\nrowbuf[%d] = %f, r = %d, Collsrows = %d", i, rowbuf[i], r, COLSROWS);
+         //}
+
+
+         float rowbuf[ COLSROWS ]; 
+         for( int col = 0; col < COLSROWS; col ++ )
+            rowbuf[ col ] = in1[ r * COLSROWS + col ];
+
+         int idlocal = get_local_id( 0 );//в данном случае нужен чтобы перенести 1 элемент
+         int nlocal = get_local_size( 0 );//также нужен чтобы перенести 1 элемент и не позволить носить дальше в for'е
+
+         //printf("\nidlocal = %d", idlocal);
+         //printf("\nnlocal = %d", nlocal);
+
+         local float colbuf[COLSROWS]; 
+
+         float sum;
+         for( int c = 0; c < COLS2; c ++ )//вычисление всей строки матрицы
+         {
+            for( int cr = idlocal; cr < COLSROWS; cr = cr + nlocal )
+            {
+                colbuf[cr] = in2[ cr + c * COLSROWS ]; 
+                //printf("\ncolbuf[%d] = %f, idLocal = %d", cr, colbuf[cr],  idlocal);
+            }
+                
+
+                barrier( CLK_LOCAL_MEM_FENCE ); //барьер ожидает пока все потоки не перенесут по1 элементу в общий массив colbuf 
+
+                //тут каждый поток считает элементы для своей строки используя общий локальный массив(столбец
+                //матрицы) одновременно
+
+            sum = 0.0;
+            for( int cr = 0; cr < COLSROWS; cr ++ )//вычисление элемента матрицы
+                sum += rowbuf[ cr ] * colbuf[cr];//rowbuf - у каждого потока своя строка которую он умножает на общий столбец
+                out[ r * COLS2 + c ] = sum;
+         } 
 }
 
 
