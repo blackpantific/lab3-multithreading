@@ -11,7 +11,7 @@
 #include <vector>
 #include <string>
 
-
+#define _CRT_SECURE_NO_WARNINGS
 
 using namespace std;
 
@@ -100,8 +100,15 @@ cl_mem arg_buffer_b;
 cl_mem arg_buffer_c;
 
 
-int main()
+int main(int argc, char** argv)
 {
+	numberOfDevice = atoi(argv[1]);//by default
+	pathInputFile = argv[2];
+	pathOutputFile = argv[3];
+	numberOfRealization = atoi(argv[4]);
+
+
+
 	try {
 
 		if (numberOfRealization == 1) {
@@ -135,68 +142,72 @@ int main()
 		}
 		else if (numberOfRealization == 2) {
 			
-			const string kernelSource = "#define COLSROWS " + to_string(NKM[1]) + "\r\n"
-				"//как только кернел выполнится всей локальной группой(она закончится), то его начнет выполнять следующая лок группа\r\n"
-				"kernel void matricesMul(global const float* in1, global const float* in2, global float* out, int COLSROWSs, int COLS2)\r\n"
-				"	{\r\n"
-				"	\r\n"
-				"	int r = get_global_id(0);//не дает пересекаться локальным группам,у нас всегда есть общаа работа( global work size)\r\n"
-			"	//и этот индекс уникальный для каждого треда, который может быть частью локальной группы\r\n"
-			"\r\n"
-				"	\r\n"
-				"	\r\n"
-				"	//for(int i=0; i<COLSROWS; i++){\r\n"
-				"		//rowbuf[i] = in1[ r * COLSROWS + i ]; \r\n"
-				"	//printf(\"\nrowbuf[%d] = %f, r = %d, Collsrows = %d\", i, rowbuf[i], r, COLSROWS);\r\n"
-				"	//}\r\n"
-				"	\r\n"
-				"	\r\n"
-				"	float rowbuf[COLSROWS]; \r\n"
-				"	for (int col = 0; col < COLSROWS; col++)\r\n"
-					"		rowbuf[col] = in1[r * COLSROWS + col]; \r\n"
-					"	\r\n"
-					"int idlocal = get_local_id(0);//в данном случае нужен чтобы перенести 1 элемент\r\n"
-			"int nlocal = get_local_size(0);//также нужен чтобы перенести 1 элемент и не позволить носить дальше в for'е\r\n"
-				"	\r\n"
-					"//printf(\"\nidlocal = %d\", idlocal);\r\n"
-					"	//printf(\"\nnlocal = %d\", nlocal);\r\n"
-					"	\r\n"
-					"local float colbuf[COLSROWS]; \r\n"
-					"	\r\n"
-					"float sum; \r\n"
-					"for (int c = 0; c < COLS2; c++)//вычисление всей строки матрицы\r\n"
-					"{\r\n"
-					"	for (int cr = idlocal; cr < COLSROWS; cr = cr + nlocal)\r\n"
-						"	{\r\n"
-						"		colbuf[cr] = in2[cr + c * COLSROWS]; \r\n"
-						"		//printf(\"\ncolbuf[%d] = %f, idLocal = %d\", cr, colbuf[cr],  idlocal);\r\n"
-						"	}\r\n"
-						"		\r\n"
-						"		\r\n"
-						"	barrier(CLK_LOCAL_MEM_FENCE); //барьер ожидает пока все потоки не перенесут по1 элементу в общий массив colbuf \r\n"
-				"\r\n"
-					"	//тут каждый поток считает элементы для своей строки используя общий локальный массив(столбец\r\n"
-					"	//матрицы) одновременно\r\n"
-					"	\r\n"
-					"	sum = 0.0; \r\n"
-					"	for (int cr = 0; cr < COLSROWS; cr++)//вычисление элемента матрицы\r\n"
-						"	sum += rowbuf[cr] * colbuf[cr];//rowbuf - у каждого потока своя строка которую он умножает на общий столбец\r\n"
-				"out[r * COLS2 + c] = sum; \r\n"
-						"}\r\n"
-					"}"
-				
-				
-				
-				;
+			get_kernel_code_from_file();
+
+//#pragma region kernelSourceCode
+//			const string kernelSource = "#define COLSROWS " + to_string(NKM[1]) + "\r\n"
+//				"//как только кернел выполнится всей локальной группой(она закончится), то его начнет выполнять следующая лок группа\r\n"
+//				"kernel void matricesMul(global const float* in1, global const float* in2, global float* out, int COLSROWSs, int COLS2)\r\n"
+//				"	{\r\n"
+//				"	\r\n"
+//				"	int r = get_global_id(0);//не дает пересекаться локальным группам,у нас всегда есть общаа работа( global work size)\r\n"
+//				"	//и этот индекс уникальный для каждого треда, который может быть частью локальной группы\r\n"
+//				"\r\n"
+//				"	\r\n"
+//				"	\r\n"
+//				"	//for(int i=0; i<COLSROWS; i++){\r\n"
+//				"		//rowbuf[i] = in1[ r * COLSROWS + i ]; \r\n"
+//				"	//printf(\"\nrowbuf[%d] = %f, r = %d, Collsrows = %d\", i, rowbuf[i], r, COLSROWS);\r\n"
+//				"	//}\r\n"
+//				"	\r\n"
+//				"	\r\n"
+//				"	float rowbuf[COLSROWS]; \r\n"
+//				"	for (int col = 0; col < COLSROWS; col++)\r\n"
+//				"		rowbuf[col] = in1[r * COLSROWS + col]; \r\n"
+//				"	\r\n"
+//				"int idlocal = get_local_id(0);//в данном случае нужен чтобы перенести 1 элемент\r\n"
+//				"int nlocal = get_local_size(0);//также нужен чтобы перенести 1 элемент и не позволить носить дальше в for'е\r\n"
+//				"	\r\n"
+//				"//printf(\"\nidlocal = %d\", idlocal);\r\n"
+//				"	//printf(\"\nnlocal = %d\", nlocal);\r\n"
+//				"	\r\n"
+//				"local float colbuf[COLSROWS]; \r\n"
+//				"	\r\n"
+//				"float sum; \r\n"
+//				"for (int c = 0; c < COLS2; c++)//вычисление всей строки матрицы\r\n"
+//				"{\r\n"
+//				"	for (int cr = idlocal; cr < COLSROWS; cr = cr + nlocal)\r\n"
+//				"	{\r\n"
+//				"		colbuf[cr] = in2[cr + c * COLSROWS]; \r\n"
+//				"		//printf(\"\ncolbuf[%d] = %f, idLocal = %d\", cr, colbuf[cr],  idlocal);\r\n"
+//				"	}\r\n"
+//				"		\r\n"
+//				"		\r\n"
+//				"	barrier(CLK_LOCAL_MEM_FENCE); //барьер ожидает пока все потоки не перенесут по1 элементу в общий массив colbuf \r\n"
+//				"\r\n"
+//				"	//тут каждый поток считает элементы для своей строки используя общий локальный массив(столбец\r\n"
+//				"	//матрицы) одновременно\r\n"
+//				"	\r\n"
+//				"	sum = 0.0; \r\n"
+//				"	for (int cr = 0; cr < COLSROWS; cr++)//вычисление элемента матрицы\r\n"
+//				"	sum += rowbuf[cr] * colbuf[cr];//rowbuf - у каждого потока своя строка которую он умножает на общий столбец\r\n"
+//				"out[r * COLS2 + c] = sum; \r\n"
+//				"}\r\n"
+//				"}";
+//				
+//#pragma endregion
+//				
+//			sizeBuf = kernelSource.size();
+//			buf = new char[sizeBuf + 1];
+//			strcpy_s(buf, sizeBuf +1, kernelSource.c_str());
+//			buf_p = buf;
+
+
 		}
 		else if (numberOfRealization == 3) {
 
 		}
 		
-
-
-
-
 
 		queue = clCreateCommandQueue(context, deviceID, CL_QUEUE_PROFILING_ENABLE, &status);
 		if (!queue)
@@ -210,8 +221,15 @@ int main()
 			throw "Error: Failed to create a program!\n";
 		}
 
-		const char* parameters = "";
+		const string param_s = "-D COLSROWS=" + to_string(NKM[1]);//"-D COLSROWS=2 -D PSG=2";
+		int size = param_s.size();
+		char* parameters = new char[size + 1];
+		//strcpy_s(parameters, size +1, param_s.c_str());
+		strcpy_s(parameters, size + 1, param_s.c_str());
+
 		status = clBuildProgram(program, 1, &deviceID, parameters, NULL, NULL);
+
+		free(parameters);
 
 		status = clGetProgramBuildInfo(program, deviceID, CL_PROGRAM_BUILD_LOG, NULL, NULL, &param_value);
 

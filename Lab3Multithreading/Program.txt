@@ -1,4 +1,4 @@
-#define COLSROWS 500
+//#define COLSROWS 2
 
 kernel void matrix_multiplication(global const float* a, global const float* b, global float* c, int wA, int wB)
 {
@@ -42,6 +42,7 @@ kernel void matricesMul(global const float* in1, global const float* in2, global
          //printf("\nnlocal = %d", nlocal);
 
          local float colbuf[COLSROWS]; 
+
 
          float sum;
          for( int c = 0; c < COLS2; c ++ )//вычисление всей строки матрицы
