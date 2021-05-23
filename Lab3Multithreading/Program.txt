@@ -8,9 +8,7 @@ kernel void matrix_multiplication(global const float* a, global const float* b, 
    float value = 0.0;
    for (int k = 0; k < wA; ++k)
    {
-      float elementA = a[ty * wA + k];
-      float elementB = b[k * wB + tx];
-      value += elementA * elementB;
+      value += a[ty * wA + k] * b[k * wB + tx];
    }
 
    c[ty * wB + tx] = value;
@@ -66,4 +64,34 @@ kernel void matricesMul(global const float* in1, global const float* in2, global
          } 
 }
 
+
+
+kernel void matricesMulVector(global const float* in1, global const float* in2, global float* out, int COLSROWSs, int COLS2)
+{
+
+         int r = get_global_id( 0 );
+
+
+         float rowbuf[ COLSROWS ]; 
+         for( int col = 0; col < COLSROWS; col ++ )
+            rowbuf[ col ] = in1[ r * COLSROWS + col ];
+
+
+         float sum;
+         for( int c = 0; c < COLS2; c ++ )//вычисление всей строки матрицы
+         {
+            sum = 0.0;
+            for( int cr = 0; cr < COLSROWS; cr += 4 )//вычисление элемента матрицы
+                sum += dot(( float4 ) ( rowbuf[ cr ],
+                                        rowbuf[ cr + 1 ],
+                                        rowbuf[ cr + 2 ],
+                                        rowbuf[ cr + 3 ] ),
+                        ( float4 ) ( in2[c * COLSROWS + cr],
+                                     in2[c * COLSROWS + cr + 1 ],
+                                     in2[c * COLSROWS + cr + 2 ],
+                                     in2[c * COLSROWS + cr + 3 ] ));
+
+                out[ r * COLS2 + c ] = sum;
+         } 
+}
 

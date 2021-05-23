@@ -42,6 +42,16 @@ void multipl_matrix_local_memory(
 	float*& resultMatrix,
 	int* NKM);
 
+void multipl_matrix_vector(
+	cl_context context,
+	cl_int status,
+	cl_command_queue queue,
+	cl_kernel kernel,
+	float*& matrix1,
+	float*& matrix2, 
+	float*& resultMatrix,
+	int* NKM);
+
 void get_matrixs_from_file(
 	string input_file_path,
 	int NKM[],
@@ -205,7 +215,7 @@ int main(int argc, char** argv)
 
 		}
 		else if (numberOfRealization == 3) {
-
+			get_kernel_code_from_file();
 		}
 		
 
@@ -262,7 +272,11 @@ int main(int argc, char** argv)
 			}
 		}
 		else if (numberOfRealization == 3) {
-
+			kernel = clCreateKernel(program, "matricesMulVector", &status);//ошибка обнаруживается тут
+			if (!kernel || status != CL_SUCCESS)
+			{
+				throw "Error: Failed to create compute kernel!\n";
+			}
 		}
 
 
@@ -278,7 +292,7 @@ int main(int argc, char** argv)
 			multipl_matrix_local_memory(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM);
 		}
 		else if (numberOfRealization == 3) {
-
+			multipl_matrix_vector(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM);
 		}
 		else {
 			throw "Incorrect number of realization";
@@ -406,8 +420,8 @@ void lection4_multipl_matrix(cl_context context, cl_int status, cl_command_queue
 
 	size_t dimentions = 2;
 	size_t global_work_size[2];
-	global_work_size[0] = matrix1Rows;
-	global_work_size[1] = matrix2Columns;
+	global_work_size[0] = matrix2Columns;
+	global_work_size[1] = matrix1Rows;
 
 	//size_t local_work_size[2];//неправильные значения
 	//global_work_size[0] = (size_t)4;
@@ -540,7 +554,97 @@ void multipl_matrix_local_memory(cl_context context, cl_int status, cl_command_q
 
 }
 
+void multipl_matrix_vector(cl_context context, cl_int status, cl_command_queue queue, cl_kernel kernel,
+	float*& matrix1, float*& matrix2, float*& resultMatrix, int* NKM)
+{
 
+	double start_time, end_time;
+
+	auto matrix1Rows = NKM[2];
+	auto matrix1Columns = NKM[1];
+	auto matrix2Rows = NKM[1];
+	auto matrix2Columns = NKM[0];
+
+	auto matrix1ElementsCount = matrix1Rows * matrix1Columns;
+	auto matrix2ElementsCount = matrix2Rows * matrix2Columns;
+	auto resultMatrixCapacity = matrix1Rows * matrix2Columns;
+
+	start_time = omp_get_wtime();//отсчет времени от начала передачи данных с хоста на девайс
+
+	/// <summary>
+	/// Буффер находится на девайсе, поэтому передача данных с хоста на девайс выполняется уже
+	/// в функции clEnqueueWriteBuffer
+	/// </summary>
+	arg_buffer_a = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * matrix1ElementsCount, NULL, &status);
+
+	status = clEnqueueWriteBuffer(queue, arg_buffer_a, CL_FALSE, 0, sizeof(float) * matrix1ElementsCount,
+		matrix1, 0, NULL, NULL);
+
+	arg_buffer_b = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * matrix2ElementsCount, NULL, &status);
+
+	status = clEnqueueWriteBuffer(queue, arg_buffer_b, CL_FALSE, 0, sizeof(float) * matrix2ElementsCount,
+		matrix2, 0, NULL, NULL);
+
+	arg_buffer_c = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * resultMatrixCapacity, NULL, &status);
+
+	status = clEnqueueWriteBuffer(queue, arg_buffer_c, CL_FALSE, 0, sizeof(float) * resultMatrixCapacity,
+		resultMatrix, 0, NULL, NULL);
+	if (status != CL_SUCCESS)
+	{
+		throw "Error: Failed in clEnqueueWriteBuffer!\n";
+	}
+
+	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &arg_buffer_a);
+	status |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &arg_buffer_b);
+	status |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &arg_buffer_c);
+	//status |= clSetKernelArg(kernel, 3, sizeof(float) * matrix1Columns, NULL);//matrix1Rows вроде не правильно
+	status |= clSetKernelArg(kernel, 3, sizeof(int), &matrix1Columns);
+	status |= clSetKernelArg(kernel, 4, sizeof(int), &matrix2Columns);//в отличие от нетранспонированной матрицы эти значения меняются
+	if (status != CL_SUCCESS)
+	{
+		throw "Error: Failed in clSetKernelArg!\n";
+	}
+
+
+	size_t dimentions = 1;
+	size_t global_work_size[1];
+	global_work_size[0] = matrix1Rows;
+
+	size_t local_work_size[1];
+	local_work_size[0] = 250;//250 выбирало по-умолчанию для матриц 500 на 500, поэтому тут я вписал 250
+
+	cl_event ourEvent = 0;
+
+	status = clEnqueueNDRangeKernel(queue, kernel, dimentions, NULL, global_work_size, NULL, 0,
+		NULL, &ourEvent);
+	if (status != CL_SUCCESS)
+	{
+		throw "Error: Failed in clEnqueueNDRangeKernel!\n";
+	}
+
+	/// <summary>
+	/// В данной функции мы получаем данные с девайса на хост, поэтому после этой функции мы заканчиваем
+	/// подсчет общего времени выполнения
+	/// </summary>
+	status = clEnqueueReadBuffer(queue, arg_buffer_c, CL_TRUE, 0,
+		sizeof(int) * resultMatrixCapacity, resultMatrix, 0, NULL, NULL);//самый последний ReadBuffer должен быть синхронным(CL_TRUE)
+	if (status != CL_SUCCESS)
+	{
+		throw "Error: Failed in clEnqueueReadBuffer!\n";
+	}
+
+	end_time = omp_get_wtime();
+	auto timeSingle = end_time - start_time;
+
+	cl_ulong gstart, gend;
+
+	status = clGetEventProfilingInfo(ourEvent, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &gstart, NULL);
+	status = clGetEventProfilingInfo(ourEvent, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &gend, NULL);
+
+	double nanoSeconds = gend - gstart;
+	printf("\nTime: %f\t%f \n", nanoSeconds / 1000000.0, timeSingle * 1000);
+
+}
 
 
 
@@ -764,8 +868,8 @@ void write_matrix_to_file() {
 	string tmp = to_string(matrix2Columns);
 	char const* N = tmp.c_str();
 
-	tmp = to_string(matrix1Rows);
-	char const* M = tmp.c_str();
+	string tmp1 = to_string(matrix1Rows);
+	char const* M = tmp1.c_str();
 
 	outputData.insert(outputData.end(), N, N + strlen(N));
 	outputData.push_back(' ');
@@ -809,7 +913,9 @@ void write_matrix_to_file() {
 		bin.close();
 	}
 	else if (numberOfRealization == 3) {
-
+		fstream bin("C:\\Users\\black\\Desktop\\matrixResult2.txt", ios::out | ios::binary);
+		bin.write(outputArray, sizeof(char) * outputData.size());
+		bin.close();
 	}
 
 	//free(outputArray);
