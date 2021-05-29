@@ -59,6 +59,13 @@ void get_matrixs_from_file(
 	float*& matrix2,
 	float*& resultMatrix);
 
+void get_matrixs_transpose_from_file_for_vector(
+	string input_file_path,
+	int NKM[],
+	float*& matrix1, 
+	float*& matrix2,
+	float*& resultMatrix);
+
 void DeviceInfo(cl_device_id deviceID);
 
 void KernelInfo(cl_kernel kernel, cl_device_id deviceID);
@@ -84,7 +91,7 @@ void get_matrixs_transpose_from_file(
 int numberOfDevice = 0;//by default
 string pathInputFile = "C:\\Users\\black\\Desktop\\matrix.txt";
 string pathOutputFile = "C:\\Users\\black\\Desktop\\matrixResult.txt";
-int numberOfRealization = 2;
+int numberOfRealization = 0;
 
 
 int NKM[3] = { 0,0,0 };
@@ -124,8 +131,11 @@ int main(int argc, char** argv)
 		if (numberOfRealization == 1) {
 			get_matrixs_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);//получаем данные по матрицам из файла
 		}
-		else {
+		else if(numberOfRealization == 2){
 			get_matrixs_transpose_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
+		}
+		else if (numberOfRealization == 3) {
+			get_matrixs_transpose_from_file_for_vector(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
 		}
 
 
@@ -554,6 +564,102 @@ void multipl_matrix_local_memory(cl_context context, cl_int status, cl_command_q
 
 }
 
+
+//Третья реализация с использованием локальной памяти
+void multipl_matrix_local_memory_v2(cl_context context, cl_int status, cl_command_queue queue, cl_kernel kernel,
+	float*& matrix1, float*& matrix2, float*& resultMatrix, int* NKM)
+{
+
+	double start_time, end_time;
+
+	auto matrix1Rows = NKM[2];
+	auto matrix1Columns = NKM[1];
+	auto matrix2Rows = NKM[1];
+	auto matrix2Columns = NKM[0];
+
+	auto matrix1ElementsCount = matrix1Rows * matrix1Columns;
+	auto matrix2ElementsCount = matrix2Rows * matrix2Columns;
+	auto resultMatrixCapacity = matrix1Rows * matrix2Columns;
+
+	start_time = omp_get_wtime();//отсчет времени от начала передачи данных с хоста на девайс
+
+	/// <summary>
+	/// Буффер находится на девайсе, поэтому передача данных с хоста на девайс выполняется уже
+	/// в функции clEnqueueWriteBuffer
+	/// </summary>
+	arg_buffer_a = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * matrix1ElementsCount, NULL, &status);
+
+	status = clEnqueueWriteBuffer(queue, arg_buffer_a, CL_FALSE, 0, sizeof(float) * matrix1ElementsCount,
+		matrix1, 0, NULL, NULL);
+
+	arg_buffer_b = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * matrix2ElementsCount, NULL, &status);
+
+	status = clEnqueueWriteBuffer(queue, arg_buffer_b, CL_FALSE, 0, sizeof(float) * matrix2ElementsCount,
+		matrix2, 0, NULL, NULL);
+
+	arg_buffer_c = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * resultMatrixCapacity, NULL, &status);
+
+	status = clEnqueueWriteBuffer(queue, arg_buffer_c, CL_FALSE, 0, sizeof(float) * resultMatrixCapacity,
+		resultMatrix, 0, NULL, NULL);
+	if (status != CL_SUCCESS)
+	{
+		throw "Error: Failed in clEnqueueWriteBuffer!\n";
+	}
+
+	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &arg_buffer_a);
+	status |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &arg_buffer_b);
+	status |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &arg_buffer_c);
+	//status |= clSetKernelArg(kernel, 3, sizeof(float) * matrix1Columns, NULL);//matrix1Rows вроде не правильно
+	status |= clSetKernelArg(kernel, 3, sizeof(int), &matrix1Columns);
+	status |= clSetKernelArg(kernel, 4, sizeof(int), &matrix2Columns);//в отличие от нетранспонированной матрицы эти значения меняются
+	if (status != CL_SUCCESS)
+	{
+		throw "Error: Failed in clSetKernelArg!\n";
+	}
+
+
+	size_t dimentions = 1;
+	size_t global_work_size[1];
+	global_work_size[0] = matrix1Rows;
+
+	size_t local_work_size[1];
+	local_work_size[0] = 250;//250 выбирало по-умолчанию для матриц 500 на 500, поэтому тут я вписал 250
+
+	cl_event ourEvent = 0;
+
+	status = clEnqueueNDRangeKernel(queue, kernel, dimentions, NULL, global_work_size, NULL, 0,
+		NULL, &ourEvent);
+	if (status != CL_SUCCESS)
+	{
+		throw "Error: Failed in clEnqueueNDRangeKernel!\n";
+	}
+
+	/// <summary>
+	/// В данной функции мы получаем данные с девайса на хост, поэтому после этой функции мы заканчиваем
+	/// подсчет общего времени выполнения
+	/// </summary>
+	status = clEnqueueReadBuffer(queue, arg_buffer_c, CL_TRUE, 0,
+		sizeof(int) * resultMatrixCapacity, resultMatrix, 0, NULL, NULL);//самый последний ReadBuffer должен быть синхронным(CL_TRUE)
+	if (status != CL_SUCCESS)
+	{
+		throw "Error: Failed in clEnqueueReadBuffer!\n";
+	}
+
+	end_time = omp_get_wtime();
+	auto timeSingle = end_time - start_time;
+
+	cl_ulong gstart, gend;
+
+	status = clGetEventProfilingInfo(ourEvent, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &gstart, NULL);
+	status = clGetEventProfilingInfo(ourEvent, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &gend, NULL);
+
+	double nanoSeconds = gend - gstart;
+	printf("\nTime: %f\t%f \n", nanoSeconds / 1000000.0, timeSingle * 1000);
+
+}
+
+
+//Первая векторная реализация(рассчитана только на матрицы со сторонами, кратными значению 4 
 void multipl_matrix_vector(cl_context context, cl_int status, cl_command_queue queue, cl_kernel kernel,
 	float*& matrix1, float*& matrix2, float*& resultMatrix, int* NKM)
 {
@@ -820,6 +926,274 @@ void get_matrixs_transpose_from_file(string input_file_path, int NKM[], float*& 
 	resultMatrix = (float*)calloc(resultMatrixCapacity, sizeof(float));
 }
 
+void get_matrixs_transpose_from_file_for_vector(string input_file_path, int NKM[], float*& matrix1, float*& matrix2, float*& resultMatrix) {
+
+	char* bufIterator = NULL;
+	char* buf = NULL;
+	float** matrix2Temp;
+	float** matrix2TempTranspose;
+
+	ifstream in("C:\\Users\\black\\Desktop\\matrix.txt", ios::binary);
+	int size = in.seekg(0, ios::end).tellg();
+	if (size == -1)
+		throw "File is empty";
+	in.seekg(0);
+	buf = new char[size + 1];
+	in.read(buf, size);
+	buf[size] = 0;
+	bufIterator = buf;
+	in.close();
+	string tempString = "";
+
+	while (true) {
+
+
+		if (*bufIterator == ' ' || *bufIterator == 13) {
+
+
+			if (NKM[0] == 0) {
+				NKM[0] = stoi(tempString);
+				tempString = "";
+			}
+			else
+				if (NKM[1] == 0) {
+					NKM[1] = stoi(tempString);
+					tempString = "";
+				}
+				else
+					if (NKM[2] == 0) {
+						NKM[2] = stoi(tempString);
+						tempString = "";
+					}
+
+			if (*bufIterator == ' ') {
+				bufIterator++;
+			}
+			else {
+				bufIterator++;
+				bufIterator++;
+				break;
+			}
+
+		}
+		else {
+			tempString += *bufIterator;
+			bufIterator++;
+		}
+
+	}
+
+	auto matrix1Rows = NKM[2];
+	auto matrix1Columns = NKM[1];
+	auto matrix2Rows = NKM[1];
+	auto matrix2Columns = NKM[0];
+
+	int res = matrix1Columns % 4;
+	if (0 == matrix1Columns % 4) {
+
+		auto matrix1ElementsCount = matrix1Rows * matrix1Columns;
+		auto matrix2ElementsCount = matrix2Rows * matrix2Columns;
+
+		matrix1 = (float*)calloc(matrix1ElementsCount, sizeof(float));
+		matrix2 = (float*)calloc(matrix2ElementsCount, sizeof(float));
+		matrix2Temp = (float**)calloc(matrix2Rows, sizeof(float*));
+
+		int i = 0;
+		while (i != matrix1ElementsCount) {
+
+			if ((int)*bufIterator != 32 && (int)*bufIterator != 13 && (int)*bufIterator != 10 && *bufIterator != '\0')
+			{
+				tempString += *bufIterator;
+				bufIterator++;
+
+			}
+			else
+			{
+				if (tempString == "")
+				{
+					throw "Wrong number exception";
+				}
+				matrix1[i] = stod(tempString);
+				i++;
+				bufIterator++;
+				tempString = "";
+			}
+			if ((int)*bufIterator == 10)
+			{
+				bufIterator++;
+			}
+
+		}
+
+		for (int i = 0; i < matrix2Rows; i++)
+		{
+			matrix2Temp[i] = (float*)calloc(matrix2Columns, sizeof(float));
+
+			int j = 0;
+			while (j != matrix2Columns)
+			{
+				if ((int)*bufIterator != 32 && (int)*bufIterator != 13 && (int)*bufIterator != 10 && *bufIterator != '\0')
+				{
+					tempString += *bufIterator;
+					bufIterator++;
+
+				}
+				else
+				{
+					if (tempString == "")
+					{
+						throw "Wrong number exception";
+					}
+					matrix2Temp[i][j] = stod(tempString);
+					j += 1;
+					bufIterator++;
+					tempString = "";
+				}
+				if (j == matrix2Columns)
+				{
+					bufIterator++;
+				}
+
+			}
+		}
+
+		matrix2TempTranspose = (float**)calloc(matrix2Columns, sizeof(float*));
+
+		for (size_t i = 0; i < matrix2Columns; i++)
+		{
+			matrix2TempTranspose[i] = (float*)calloc(matrix2Rows, sizeof(float));
+		}
+
+
+		float t = 0.0;
+		for (int i = 0; i < matrix2Rows; i++)
+		{
+			for (int j = 0; j < matrix2Columns; j++)
+			{
+				matrix2TempTranspose[j][i] = matrix2Temp[i][j];
+			}
+		}
+
+		int iterator = 0;
+		for (size_t i = 0; i < matrix2Columns; i++)
+		{
+			for (size_t j = 0; j < matrix2Rows; j++)
+			{
+				matrix2[iterator] = matrix2TempTranspose[i][j];
+				iterator++;
+			}
+		}
+
+
+		int resultMatrixCapacity = matrix1Rows * matrix2Columns;
+
+		resultMatrix = (float*)calloc(resultMatrixCapacity, sizeof(float));
+	}
+	else {
+		matrix1Columns += (4 - res);
+		matrix2Rows += (4 - res);
+
+		auto matrix1ElementsCount = matrix1Rows * matrix1Columns;
+		auto matrix2ElementsCount = matrix2Rows * matrix2Columns;
+
+		matrix1 = (float*)calloc(matrix1ElementsCount, sizeof(float));
+		matrix2 = (float*)calloc(matrix2ElementsCount, sizeof(float));
+		matrix2Temp = (float**)calloc(matrix2Rows, sizeof(float*));
+
+		int i = 0;
+		while (i != matrix1ElementsCount) {
+
+			if ((int)*bufIterator != 32 && (int)*bufIterator != 13 && (int)*bufIterator != 10 && *bufIterator != '\0')
+			{
+				tempString += *bufIterator;
+				bufIterator++;
+
+			}
+			else
+			{
+				if (tempString == "")
+				{
+					throw "Wrong number exception";
+				}
+				matrix1[i] = stod(tempString);
+				i++;
+				bufIterator++;
+				tempString = "";
+			}
+			if ((int)*bufIterator == 10)
+			{
+				bufIterator++;
+			}
+
+		}
+
+		for (int i = 0; i < matrix2Rows; i++)
+		{
+			matrix2Temp[i] = (float*)calloc(matrix2Columns, sizeof(float));
+
+			int j = 0;
+			while (j != matrix2Columns)
+			{
+				if ((int)*bufIterator != 32 && (int)*bufIterator != 13 && (int)*bufIterator != 10 && *bufIterator != '\0')
+				{
+					tempString += *bufIterator;
+					bufIterator++;
+
+				}
+				else
+				{
+					if (tempString == "")
+					{
+						throw "Wrong number exception";
+					}
+					matrix2Temp[i][j] = stod(tempString);
+					j += 1;
+					bufIterator++;
+					tempString = "";
+				}
+				if (j == matrix2Columns)
+				{
+					bufIterator++;
+				}
+
+			}
+		}
+
+		matrix2TempTranspose = (float**)calloc(matrix2Columns, sizeof(float*));
+
+		for (size_t i = 0; i < matrix2Columns; i++)
+		{
+			matrix2TempTranspose[i] = (float*)calloc(matrix2Rows, sizeof(float));
+		}
+
+
+		float t = 0.0;
+		for (int i = 0; i < matrix2Rows; i++)
+		{
+			for (int j = 0; j < matrix2Columns; j++)
+			{
+				matrix2TempTranspose[j][i] = matrix2Temp[i][j];
+			}
+		}
+
+		int iterator = 0;
+		for (size_t i = 0; i < matrix2Columns; i++)
+		{
+			for (size_t j = 0; j < matrix2Rows; j++)
+			{
+				matrix2[iterator] = matrix2TempTranspose[i][j];
+				iterator++;
+			}
+		}
+
+
+		int resultMatrixCapacity = matrix1Rows * matrix2Columns;
+
+		resultMatrix = (float*)calloc(resultMatrixCapacity, sizeof(float));
+	}
+
+}
+
 void free_openCL() {
 
 	if(arg_buffer_a!=NULL)
@@ -903,17 +1277,17 @@ void write_matrix_to_file() {
 	char* outputArray = &outputData[0];
 
 	if (numberOfRealization == 1) {
-		fstream bin("C:\\Users\\black\\Desktop\\matrixResult.txt", ios::out | ios::binary);
+		fstream bin(pathOutputFile/*"C:\\Users\\black\\Desktop\\matrixResult.txt"*/, ios::out | ios::binary);
 		bin.write(outputArray, sizeof(char) * outputData.size());
 		bin.close();
 	}
 	else if (numberOfRealization == 2) {
-		fstream bin("C:\\Users\\black\\Desktop\\matrixResult1.txt", ios::out | ios::binary);
+		fstream bin(pathOutputFile/*"C:\\Users\\black\\Desktop\\matrixResult1.txt"*/, ios::out | ios::binary);
 		bin.write(outputArray, sizeof(char) * outputData.size());
 		bin.close();
 	}
 	else if (numberOfRealization == 3) {
-		fstream bin("C:\\Users\\black\\Desktop\\matrixResult2.txt", ios::out | ios::binary);
+		fstream bin(pathOutputFile/*"C:\\Users\\black\\Desktop\\matrixResult2.txt"*/, ios::out | ios::binary);
 		bin.write(outputArray, sizeof(char) * outputData.size());
 		bin.close();
 	}
