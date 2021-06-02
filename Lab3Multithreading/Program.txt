@@ -1,5 +1,67 @@
 //#define COLSROWS 2
 
+
+kernel void myGEMM3(const global float* A, const global float* B, global float* C,
+                            const int M, const int N, const int K) {
+    
+
+    const int row = get_local_id(0); // Local row ID (max: TS)
+    const int col = get_local_id(1); // Local col ID (max: TS)
+
+
+    const int globalRow = TS*get_group_id(0) + row; // Row ID of C (0..M)  или то же самое что и get_global_id(0)
+    const int globalCol = TS*get_group_id(1) + col; // Col ID of C (0..N) или то же самое что и get_global_id(1)
+
+    local float Asub[TS][TS];
+    local float Bsub[TS][TS];
+
+    float acc[WPT];
+    for (int w=0; w<WPT; w++) {
+        acc[w] = 0.0f;
+    }
+ 
+
+    // Loop over all tiles
+    const int numTiles = K/TS;
+    for (int t=0; t<numTiles; t++) 
+    {
+ 
+        //в данным цикле каждый треж копирует для себя строчку из 8 элементов для умножения
+        // Load one tile of A and B into local memory
+           for (int w=0; w<WPT; w++) {
+            const int tiledRow = TS*t + row;
+            const int tiledCol = TS*t + col;
+            Asub[col + w*RTS][row] = A[(tiledCol + w*RTS)*M + globalRow];
+            Bsub[col + w*RTS][row] = B[(globalCol + w*RTS)*K + tiledRow];
+            //printf("\nAsub[%d + %d*%d][%d] = %f, Bsub[%d + %d*%d][%d] = %f",
+            //col, w, RTS, row, A[(tiledCol + w*RTS)*M + globalRow], col, w, RTS, row, B[(globalCol + w*RTS)*K + tiledRow]);
+        }
+
+        // Synchronise to make sure the tile is loaded
+        barrier(CLK_LOCAL_MEM_FENCE);
+ 
+        // Perform the computation for a single tile
+         for (int k=0; k<TS; k++) {//перемещение по строке из 8ми элементов и вычисление каждого элемента
+            for (int w=0; w<WPT; w++) {
+                acc[w] += Asub[k][row] * Bsub[col + w*RTS][k];//умножение строки на столбец
+            }
+        }
+        
+        // Synchronise before loading the next tile, синхронизируем перед загрузкой следующей пары подматриц для получения окончательного результата(для матр 4 на 4)
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+     // Store the final result in C
+    for (int w=0; w<WPT; w++) {
+        C[(globalCol + w*RTS)*M + globalRow] = acc[w];
+    }
+}
+
+
+
+
+
+
 kernel void matrix_multiplication(global const float* a, global const float* b, global float* c, int wA, int wB)
 {
 	int tx = get_global_id(0); 

@@ -42,6 +42,16 @@ void multipl_matrix_local_memory(
 	float*& resultMatrix,
 	int* NKM);
 
+void multipl_matrix_local_memory_v4(
+	cl_context context, 
+	cl_int status,
+	cl_command_queue queue,
+	cl_kernel kernel,
+	float*& matrix1, 
+	float*& matrix2, 
+	float*& resultMatrix,
+	int* NKM);
+
 void multipl_matrix_vector(
 	cl_context context,
 	cl_int status,
@@ -59,6 +69,14 @@ void get_matrixs_from_file(
 	float*& matrix2,
 	float*& resultMatrix);
 
+void get_matrixs_from_file_v2(
+	string input_file_path,
+	int NKM[], 
+	float*& matrix1,
+	float*& matrix2,
+	float*& resultMatrix, 
+	int multiplicity);
+
 void get_matrixs_transpose_from_file_for_vector(
 	string input_file_path,
 	int NKM[],
@@ -71,6 +89,8 @@ void DeviceInfo(cl_device_id deviceID);
 void KernelInfo(cl_kernel kernel, cl_device_id deviceID);
 
 void write_matrix_to_file();
+
+void write_matrix_to_file_v2();
 
 void get_kernel_code_from_file();
 
@@ -95,6 +115,7 @@ int numberOfRealization = 0;
 
 
 int NKM[3] = { 0,0,0 };
+int NKMBase[3] = { 0,0,0 };//до добавлени€ дополнительных нулей
 float* matrix1 = 0;
 float* matrix2 = 0;
 float* resultMatrix = 0;
@@ -116,6 +137,10 @@ cl_mem arg_buffer_a;
 cl_mem arg_buffer_b;
 cl_mem arg_buffer_c;
 
+int localWorkSize = 32;
+int WPT = 0;
+int RTS = 0;
+
 
 int main(int argc, char** argv)
 {
@@ -132,7 +157,8 @@ int main(int argc, char** argv)
 			get_matrixs_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);//получаем данные по матрицам из файла
 		}
 		else if(numberOfRealization == 2){
-			get_matrixs_transpose_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
+			//get_matrixs_transpose_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
+			get_matrixs_from_file_v2(pathInputFile, NKM, matrix1, matrix2, resultMatrix, localWorkSize);
 		}
 		else if (numberOfRealization == 3) {
 			get_matrixs_transpose_from_file_for_vector(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
@@ -164,65 +190,6 @@ int main(int argc, char** argv)
 			
 			get_kernel_code_from_file();
 
-//#pragma region kernelSourceCode
-//			const string kernelSource = "#define COLSROWS " + to_string(NKM[1]) + "\r\n"
-//				"//как только кернел выполнитс€ всей локальной группой(она закончитс€), то его начнет выполн€ть следующа€ лок группа\r\n"
-//				"kernel void matricesMul(global const float* in1, global const float* in2, global float* out, int COLSROWSs, int COLS2)\r\n"
-//				"	{\r\n"
-//				"	\r\n"
-//				"	int r = get_global_id(0);//не дает пересекатьс€ локальным группам,у нас всегда есть общаа работа( global work size)\r\n"
-//				"	//и этот индекс уникальный дл€ каждого треда, который может быть частью локальной группы\r\n"
-//				"\r\n"
-//				"	\r\n"
-//				"	\r\n"
-//				"	//for(int i=0; i<COLSROWS; i++){\r\n"
-//				"		//rowbuf[i] = in1[ r * COLSROWS + i ]; \r\n"
-//				"	//printf(\"\nrowbuf[%d] = %f, r = %d, Collsrows = %d\", i, rowbuf[i], r, COLSROWS);\r\n"
-//				"	//}\r\n"
-//				"	\r\n"
-//				"	\r\n"
-//				"	float rowbuf[COLSROWS]; \r\n"
-//				"	for (int col = 0; col < COLSROWS; col++)\r\n"
-//				"		rowbuf[col] = in1[r * COLSROWS + col]; \r\n"
-//				"	\r\n"
-//				"int idlocal = get_local_id(0);//в данном случае нужен чтобы перенести 1 элемент\r\n"
-//				"int nlocal = get_local_size(0);//также нужен чтобы перенести 1 элемент и не позволить носить дальше в for'е\r\n"
-//				"	\r\n"
-//				"//printf(\"\nidlocal = %d\", idlocal);\r\n"
-//				"	//printf(\"\nnlocal = %d\", nlocal);\r\n"
-//				"	\r\n"
-//				"local float colbuf[COLSROWS]; \r\n"
-//				"	\r\n"
-//				"float sum; \r\n"
-//				"for (int c = 0; c < COLS2; c++)//вычисление всей строки матрицы\r\n"
-//				"{\r\n"
-//				"	for (int cr = idlocal; cr < COLSROWS; cr = cr + nlocal)\r\n"
-//				"	{\r\n"
-//				"		colbuf[cr] = in2[cr + c * COLSROWS]; \r\n"
-//				"		//printf(\"\ncolbuf[%d] = %f, idLocal = %d\", cr, colbuf[cr],  idlocal);\r\n"
-//				"	}\r\n"
-//				"		\r\n"
-//				"		\r\n"
-//				"	barrier(CLK_LOCAL_MEM_FENCE); //барьер ожидает пока все потоки не перенесут по1 элементу в общий массив colbuf \r\n"
-//				"\r\n"
-//				"	//тут каждый поток считает элементы дл€ своей строки использу€ общий локальный массив(столбец\r\n"
-//				"	//матрицы) одновременно\r\n"
-//				"	\r\n"
-//				"	sum = 0.0; \r\n"
-//				"	for (int cr = 0; cr < COLSROWS; cr++)//вычисление элемента матрицы\r\n"
-//				"	sum += rowbuf[cr] * colbuf[cr];//rowbuf - у каждого потока сво€ строка которую он умножает на общий столбец\r\n"
-//				"out[r * COLS2 + c] = sum; \r\n"
-//				"}\r\n"
-//				"}";
-//				
-//#pragma endregion
-//				
-//			sizeBuf = kernelSource.size();
-//			buf = new char[sizeBuf + 1];
-//			strcpy_s(buf, sizeBuf +1, kernelSource.c_str());
-//			buf_p = buf;
-
-
 		}
 		else if (numberOfRealization == 3) {
 			get_kernel_code_from_file();
@@ -241,7 +208,17 @@ int main(int argc, char** argv)
 			throw "Error: Failed to create a program!\n";
 		}
 
-		const string param_s = "-D COLSROWS=" + to_string(NKM[1]);//"-D COLSROWS=2 -D PSG=2";
+
+		if (NKM[0] < 8) {
+			WPT = NKM[0];
+		}
+		else {
+			WPT = 8;
+		}
+		RTS = localWorkSize / WPT;
+
+		const string param_s = "-D COLSROWS=" + to_string(NKM[1]) + " -D TS=" + to_string(localWorkSize) +
+			" -D WPT=" + to_string(WPT) + " -D RTS=" + to_string(RTS);//"-D COLSROWS=2 -D PSG=2";
 		int size = param_s.size();
 		char* parameters = new char[size + 1];
 		//strcpy_s(parameters, size +1, param_s.c_str());
@@ -275,7 +252,8 @@ int main(int argc, char** argv)
 			}
 		}
 		else if (numberOfRealization == 2) {
-			kernel = clCreateKernel(program, "matricesMul", &status);//ошибка обнаруживаетс€ тут
+			//kernel = clCreateKernel(program, "matricesMul", &status);//ошибка обнаруживаетс€ тут
+			kernel = clCreateKernel(program, "myGEMM3", &status);//ошибка обнаруживаетс€ тут
 			if (!kernel || status != CL_SUCCESS)
 			{
 				throw "Error: Failed to create compute kernel!\n";
@@ -299,7 +277,8 @@ int main(int argc, char** argv)
 			lection4_multipl_matrix(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM, deviceID);
 		}
 		else if (numberOfRealization == 2) {
-			multipl_matrix_local_memory(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM);
+			//multipl_matrix_local_memory(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM);
+			multipl_matrix_local_memory_v4(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM);
 		}
 		else if (numberOfRealization == 3) {
 			multipl_matrix_vector(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM);
@@ -309,8 +288,13 @@ int main(int argc, char** argv)
 		}
 
 
-
-		write_matrix_to_file();
+		if (numberOfRealization == 2) {
+			write_matrix_to_file_v2();
+		}
+		else {
+			write_matrix_to_file();
+		}
+		
 
 		free_openCL();
 
@@ -564,9 +548,8 @@ void multipl_matrix_local_memory(cl_context context, cl_int status, cl_command_q
 
 }
 
-
-//“реть€ реализаци€ с использованием локальной пам€ти
-void multipl_matrix_local_memory_v2(cl_context context, cl_int status, cl_command_queue queue, cl_kernel kernel,
+//„етверта€ реализаци€ с использованием локальной пам€ти
+void multipl_matrix_local_memory_v4(cl_context context, cl_int status, cl_command_queue queue, cl_kernel kernel,
 	float*& matrix1, float*& matrix2, float*& resultMatrix, int* NKM)
 {
 
@@ -609,25 +592,38 @@ void multipl_matrix_local_memory_v2(cl_context context, cl_int status, cl_comman
 	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &arg_buffer_a);
 	status |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &arg_buffer_b);
 	status |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &arg_buffer_c);
-	//status |= clSetKernelArg(kernel, 3, sizeof(float) * matrix1Columns, NULL);//matrix1Rows вроде не правильно
-	status |= clSetKernelArg(kernel, 3, sizeof(int), &matrix1Columns);
-	status |= clSetKernelArg(kernel, 4, sizeof(int), &matrix2Columns);//в отличие от нетранспонированной матрицы эти значени€ мен€ютс€
+	status |= clSetKernelArg(kernel, 3, sizeof(int), &matrix1Rows);//M
+	status |= clSetKernelArg(kernel, 4, sizeof(int), &matrix2Columns);//N
+	status |= clSetKernelArg(kernel, 5, sizeof(int), &matrix1Columns);//K
 	if (status != CL_SUCCESS)
 	{
 		throw "Error: Failed in clSetKernelArg!\n";
 	}
 
 
-	size_t dimentions = 1;
-	size_t global_work_size[1];
-	global_work_size[0] = matrix1Rows;
+	size_t dimentions = 2;
+	size_t global_work_size[2];
+	//kernel2
+	//global_work_size[0] = matrix1Rows;
+	//global_work_size[1] = matrix2Columns;
 
-	size_t local_work_size[1];
-	local_work_size[0] = 250;//250 выбирало по-умолчанию дл€ матриц 500 на 500, поэтому тут € вписал 250
+	global_work_size[0] = matrix1Rows;
+	global_work_size[1] = matrix2Columns / WPT;
+
+	//kernel3
+
+	size_t local_work_size[2];
+	//kernel2
+	//local_work_size[0] = localWorkSize;
+	//local_work_size[1] = localWorkSize;
+
+	//kernel3
+	local_work_size[0] = localWorkSize;
+	local_work_size[1] = localWorkSize / WPT;
 
 	cl_event ourEvent = 0;
 
-	status = clEnqueueNDRangeKernel(queue, kernel, dimentions, NULL, global_work_size, NULL, 0,
+	status = clEnqueueNDRangeKernel(queue, kernel, dimentions, NULL, global_work_size, local_work_size, 0,
 		NULL, &ourEvent);
 	if (status != CL_SUCCESS)
 	{
@@ -656,7 +652,14 @@ void multipl_matrix_local_memory_v2(cl_context context, cl_int status, cl_comman
 	double nanoSeconds = gend - gstart;
 	printf("\nTime: %f\t%f \n", nanoSeconds / 1000000.0, timeSingle * 1000);
 
+
+	/*for (size_t i = 0; i < resultMatrixCapacity; i++)
+	{
+		printf("\nmatrix[%d] = %f", i, resultMatrix[i]);
+	}*/
+
 }
+
 
 
 //ѕерва€ векторна€ реализаци€(рассчитана только на матрицы со сторонами, кратными значению 4 
@@ -764,6 +767,346 @@ void multipl_matrix_vector(cl_context context, cl_int status, cl_command_queue q
 
 
 // –≈ƒ ќ »—ѕќЋ№«”≈ћџ≈
+
+void get_matrixs_from_file_v2(string input_file_path, int NKM[], float*& matrix1, float*& matrix2, float*& resultMatrix, int multiplicity)
+{
+	int multiplicity1 = 4;
+	float** table1FromFile = NULL;
+	float** table2FromFile = NULL;
+
+	float** table1WithAddedElements = NULL;
+	float** table2WithAddedElements = NULL;
+
+	char* bufIterator = NULL;
+	char* buf = NULL;
+
+	ifstream in("C:\\Users\\black\\Desktop\\matrix.txt", ios::binary);
+	int size = in.seekg(0, ios::end).tellg();
+	if (size == -1)
+		throw "File is empty";
+	in.seekg(0);
+	buf = new char[size + 1];
+	in.read(buf, size);
+	buf[size] = 0;
+	bufIterator = buf;
+	in.close();
+	string tempString = "";
+
+	while (true) {
+
+
+		if (*bufIterator == ' ' || *bufIterator == 13) {
+
+
+			if (NKM[0] == 0) {
+				NKM[0] = stoi(tempString);
+				tempString = "";
+			}
+			else
+				if (NKM[1] == 0) {
+					NKM[1] = stoi(tempString);
+					tempString = "";
+				}
+				else
+					if (NKM[2] == 0) {
+						NKM[2] = stoi(tempString);
+						tempString = "";
+					}
+
+			if (*bufIterator == ' ') {
+				bufIterator++;
+			}
+			else {
+				bufIterator++;
+				bufIterator++;
+				break;
+			}
+
+		}
+		else {
+			tempString += *bufIterator;
+			bufIterator++;
+		}
+
+	}
+
+	NKMBase[2] = NKM[2];
+	NKMBase[1] = NKM[1];
+	NKMBase[0] = NKM[0];
+
+
+	auto matrix1RowsFromFile = NKM[2];//M
+	auto matrix1ColumnsFromFile = NKM[1];//K
+	auto matrix2RowsFromFile = NKM[1];//K
+	auto matrix2ColumnsFromFile = NKM[0];//N
+
+	auto matrix1RowsWithNulls = NKM[2];//M
+	auto matrix1ColumnsWithNulls = NKM[1];//K
+	auto matrix2RowsWithNulls = NKM[1];//K
+	auto matrix2ColumnsWithNulls = NKM[0];//N
+
+
+	int matrix1RowsAddedNumber = 0;
+	int matrix1ColumnsAddedNumber = 0;
+	int matrix2RowsAddedNumber = 0;
+	int matrix2ColumnsAddedNumber = 0;
+
+
+	if ((matrix1RowsFromFile % multiplicity) != 0) {
+		matrix1RowsAddedNumber = multiplicity - (matrix1RowsFromFile % multiplicity);
+		matrix1RowsWithNulls += matrix1RowsAddedNumber;
+	}
+
+	if ((matrix1ColumnsFromFile % multiplicity) != 0) {
+		matrix1ColumnsAddedNumber = multiplicity - (matrix1ColumnsWithNulls % multiplicity);
+		matrix1ColumnsWithNulls += matrix1ColumnsAddedNumber;
+	}
+
+	if ((matrix2RowsFromFile % multiplicity) != 0) {
+		matrix2RowsAddedNumber = multiplicity - (matrix2RowsWithNulls % multiplicity);
+		matrix2RowsWithNulls += matrix2RowsAddedNumber;
+	}
+
+	if ((matrix2ColumnsFromFile % multiplicity) != 0) {
+		matrix2ColumnsAddedNumber = multiplicity - (matrix2ColumnsWithNulls % multiplicity);
+		matrix2ColumnsWithNulls += matrix2ColumnsAddedNumber;
+	}
+
+
+	if (matrix1ColumnsWithNulls != matrix2RowsWithNulls) {
+		throw "Impossible! The collsrows don't match!";
+	}
+
+
+
+
+
+
+
+
+
+
+	table1FromFile = (float**)calloc(matrix1RowsFromFile, sizeof(float*));
+
+	for (int i = 0; i < matrix1RowsFromFile; i++)
+	{
+		table1FromFile[i] = (float*)calloc(matrix1ColumnsFromFile, sizeof(float));//table[i] - это сам указатель на будущий массив под элементы
+
+		int j = 0;
+		while (j != matrix1ColumnsFromFile)
+		{
+			if ((int)*bufIterator != 32 && (int)*bufIterator != 13 && (int)*bufIterator != 10 && *bufIterator != '\0')
+			{
+				tempString += *bufIterator;
+				bufIterator++;
+
+			}
+			else
+			{
+				if (tempString == "")
+				{
+					throw "Wrong number exception";
+				}
+				table1FromFile[i][j] = stod(tempString);
+				j += 1;
+				bufIterator++;
+				tempString = "";
+			}
+			if (j == matrix1ColumnsFromFile)
+			{
+				bufIterator++;
+			}
+
+		}
+	}
+
+
+	//for (size_t i = 0; i < matrix1RowsFromFile; i++)
+	//{
+	//	for (size_t j = 0; j < matrix1ColumnsFromFile; j++)
+	//	{
+	//		printf("\nmatrix[%d][%d] = %f", i, j, table1FromFile[i][j]);
+	//	}
+	//}
+
+
+
+	table2FromFile = (float**)calloc(matrix2RowsFromFile, sizeof(float*));
+
+	for (int i = 0; i < matrix2RowsFromFile; i++)
+	{
+		table2FromFile[i] = (float*)calloc(matrix2ColumnsFromFile, sizeof(float));//table[i] - это сам указатель на будущий массив под элементы
+
+		int j = 0;
+		while (j != matrix2ColumnsFromFile)
+		{
+			if ((int)*bufIterator != 32 && (int)*bufIterator != 13 && (int)*bufIterator != 10 && *bufIterator != '\0')
+			{
+				tempString += *bufIterator;
+				bufIterator++;
+
+			}
+			else
+			{
+				if (tempString == "")
+				{
+					throw "Wrong number exception";
+				}
+				table2FromFile[i][j] = stod(tempString);
+				j += 1;
+				bufIterator++;
+				tempString = "";
+			}
+			if (j == matrix2ColumnsFromFile)
+			{
+				bufIterator++;
+			}
+
+		}
+	}
+
+
+	//for (size_t i = 0; i < matrix2RowsFromFile; i++)
+	//{
+	//	for (size_t j = 0; j < matrix2ColumnsFromFile; j++)
+	//	{
+	//		printf("\nmatrix[%d][%d] = %f", i, j, table2FromFile[i][j]);
+	//	}
+	//}
+
+
+
+	table1WithAddedElements = (float**)calloc(matrix1RowsWithNulls, sizeof(float*));
+
+	for (size_t i = 0; i < matrix1RowsWithNulls; i++)
+	{
+		table1WithAddedElements[i] = (float*)calloc(matrix1ColumnsWithNulls, sizeof(float));
+	}
+
+
+
+	table2WithAddedElements = (float**)calloc(matrix2RowsWithNulls, sizeof(float*));
+
+	for (size_t i = 0; i < matrix2RowsWithNulls; i++)
+	{
+		table2WithAddedElements[i] = (float*)calloc(matrix2ColumnsWithNulls, sizeof(float));
+	}
+
+
+
+
+	for (size_t i = 0; i < matrix1RowsFromFile; i++)
+	{
+		for (size_t j = 0; j < matrix1ColumnsFromFile; j++)
+		{
+			table1WithAddedElements[i][j] = table1FromFile[i][j];
+		}
+
+	}
+
+	/*for (size_t i = 0; i < matrix1RowsWithNulls; i++)
+	{
+		for (size_t j = 0; j < matrix1ColumnsWithNulls; j++)
+		{
+			printf("\nmatrix[%d][%d] = %f", i, j, table1WithAddedElements[i][j]);
+		}
+	}*/
+
+	for (size_t i = 0; i < matrix2RowsFromFile; i++)
+	{
+		for (size_t j = 0; j < matrix2ColumnsFromFile; j++)
+		{
+			table2WithAddedElements[i][j] = table2FromFile[i][j];
+		}
+
+	}
+
+
+	//for (size_t i = 0; i < matrix2RowsWithNulls; i++)
+	//{
+	//	for (size_t j = 0; j < matrix2ColumnsWithNulls; j++)
+	//	{
+	//		printf("\nmatrix[%d][%d] = %f", i, j, table2WithAddedElements[i][j]);
+	//	}
+	//}
+
+
+	auto matrix1ElementsCountWithAdded = matrix1RowsWithNulls * matrix1ColumnsWithNulls;
+	auto matrix2ElementsCountWithAdded = matrix2RowsWithNulls * matrix2ColumnsWithNulls;
+
+	matrix1 = (float*)calloc(matrix1ElementsCountWithAdded, sizeof(float));
+	matrix2 = (float*)calloc(matrix2ElementsCountWithAdded, sizeof(float));
+
+	int increment = 0;
+
+	for (size_t j = 0; j < matrix1ColumnsWithNulls; j++)
+	{
+		for (size_t i = 0; i < matrix1RowsWithNulls; i++)
+		{
+			matrix1[increment] = table1WithAddedElements[i][j];
+			increment++;
+		}
+	}
+
+	/*for (size_t i = 0; i < matrix1ElementsCountWithAdded; i++)
+	{
+		printf("\nmatrix1[%d] = %f", i, matrix1[i]);
+	}*/
+
+	increment = 0;
+
+	for (size_t j = 0; j < matrix2ColumnsWithNulls; j++)
+	{
+		for (size_t i = 0; i < matrix2RowsWithNulls; i++)
+		{
+			matrix2[increment] = table2WithAddedElements[i][j];
+			increment++;
+		}
+	}
+
+	/*for (size_t i = 0; i < matrix2ElementsCountWithAdded; i++)
+	{
+		printf("\nmatrix1[%d] = %f", i, matrix2[i]);
+	}*/
+
+	NKM[2] = matrix1RowsWithNulls;
+	NKM[1] = matrix1ColumnsWithNulls;
+	NKM[0] = matrix2ColumnsWithNulls;
+
+
+	int resultMatrixCapacity = matrix1RowsWithNulls * matrix2ColumnsWithNulls;
+
+	resultMatrix = (float*)calloc(resultMatrixCapacity, sizeof(float));
+
+	free(buf);
+
+	for (size_t i = 0; i < matrix1RowsFromFile; i++)
+	{
+		free(table1FromFile[i]);
+	}
+	free(table1FromFile);
+
+	for (size_t i = 0; i < matrix2RowsFromFile; i++)
+	{
+		free(table2FromFile[i]);
+	}
+	free(table2FromFile);
+
+	for (size_t i = 0; i < matrix1RowsWithNulls; i++)
+	{
+		free(table1WithAddedElements[i]);
+	}
+	free(table1WithAddedElements);
+
+	for (size_t i = 0; i < matrix2RowsWithNulls; i++)
+	{
+		free(table2WithAddedElements[i]);
+	}
+	free(table2WithAddedElements);
+
+
+}
+
 
 void get_matrixs_transpose_from_file(string input_file_path, int NKM[], float*& matrix1, float*& matrix2, float*& resultMatrix) {
 
@@ -1266,6 +1609,76 @@ void write_matrix_to_file() {
 
 			increment++;
 		}
+		outputData.pop_back();
+		outputData.push_back('\r');
+		outputData.push_back('\n');
+
+	}
+	outputData.pop_back();
+	outputData.pop_back();
+
+	char* outputArray = &outputData[0];
+
+	if (numberOfRealization == 1) {
+		fstream bin(pathOutputFile/*"C:\\Users\\black\\Desktop\\matrixResult.txt"*/, ios::out | ios::binary);
+		bin.write(outputArray, sizeof(char) * outputData.size());
+		bin.close();
+	}
+	else if (numberOfRealization == 2) {
+		fstream bin(pathOutputFile/*"C:\\Users\\black\\Desktop\\matrixResult1.txt"*/, ios::out | ios::binary);
+		bin.write(outputArray, sizeof(char) * outputData.size());
+		bin.close();
+	}
+	else if (numberOfRealization == 3) {
+		fstream bin(pathOutputFile/*"C:\\Users\\black\\Desktop\\matrixResult2.txt"*/, ios::out | ios::binary);
+		bin.write(outputArray, sizeof(char) * outputData.size());
+		bin.close();
+	}
+
+	//free(outputArray);
+
+}
+
+void write_matrix_to_file_v2() {
+
+	// WRITE RESULT MATRIX TO FILE
+
+
+	auto matrix1Rows = NKMBase[2];
+	auto matrix1Columns = NKMBase[1];
+	auto matrix2Rows = NKMBase[1];
+	auto matrix2Columns = NKMBase[0];
+
+	vector<char> outputData;
+
+	string tmp = to_string(matrix2Columns);
+	char const* N = tmp.c_str();
+
+	string tmp1 = to_string(matrix1Rows);
+	char const* M = tmp1.c_str();
+
+	outputData.insert(outputData.end(), N, N + strlen(N));
+	outputData.push_back(' ');
+	outputData.insert(outputData.end(), M, M + strlen(M));
+	outputData.push_back('\r');
+	outputData.push_back('\n');
+
+
+	for (size_t i = 0; i < matrix1Rows; i++)//мнимые циклы
+	{
+		for (size_t j = 0; j < matrix2Columns; j++)
+		{//NKM[2] - промежуток, через который мы проскакиваем чтобы выбрать из массива правильные значени€
+
+			char* char_arr;
+			string str_obj(to_string(resultMatrix[j * NKM[2] + i]));
+			char_arr = &str_obj[0];
+
+			outputData.insert(outputData.end(), char_arr, char_arr + strlen(char_arr));
+			outputData.push_back(' ');
+
+
+
+		}//C[globalCol * M + globalRow]
 		outputData.pop_back();
 		outputData.push_back('\r');
 		outputData.push_back('\n');
