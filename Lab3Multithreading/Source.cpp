@@ -157,11 +157,14 @@ int main(int argc, char** argv)
 			get_matrixs_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);//получаем данные по матрицам из файла
 		}
 		else if(numberOfRealization == 2){
-			//get_matrixs_transpose_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
+			
 			get_matrixs_from_file_v2(pathInputFile, NKM, matrix1, matrix2, resultMatrix, localWorkSize);
 		}
 		else if (numberOfRealization == 3) {
 			get_matrixs_transpose_from_file_for_vector(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
+		}
+		else if (numberOfRealization == 4) {
+			get_matrixs_transpose_from_file(pathInputFile, NKM, matrix1, matrix2, resultMatrix);
 		}
 
 
@@ -192,6 +195,9 @@ int main(int argc, char** argv)
 
 		}
 		else if (numberOfRealization == 3) {
+			get_kernel_code_from_file();
+		}
+		else if (numberOfRealization == 4) {
 			get_kernel_code_from_file();
 		}
 		
@@ -266,6 +272,13 @@ int main(int argc, char** argv)
 				throw "Error: Failed to create compute kernel!\n";
 			}
 		}
+		else if (numberOfRealization == 4) {
+			kernel = clCreateKernel(program, "matricesMul", &status);//ошибка обнаруживается тут
+			if (!kernel || status != CL_SUCCESS)
+			{
+				throw "Error: Failed to create compute kernel!\n";
+			}
+		}
 
 
 
@@ -282,6 +295,9 @@ int main(int argc, char** argv)
 		}
 		else if (numberOfRealization == 3) {
 			multipl_matrix_vector(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM);
+		}
+		else if (numberOfRealization == 4) {
+			multipl_matrix_local_memory(context, status, queue, kernel, matrix1, matrix2, resultMatrix, NKM);
 		}
 		else {
 			throw "Incorrect number of realization";
