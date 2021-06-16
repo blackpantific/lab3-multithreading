@@ -796,7 +796,7 @@ void get_matrixs_from_file_v2(string input_file_path, int NKM[], float*& matrix1
 	char* bufIterator = NULL;
 	char* buf = NULL;
 
-	ifstream in("C:\\Users\\black\\Desktop\\matrix.txt", ios::binary);
+	ifstream in(input_file_path, ios::binary);
 	int size = in.seekg(0, ios::end).tellg();
 	if (size == -1)
 		throw "File is empty";
@@ -1123,7 +1123,6 @@ void get_matrixs_from_file_v2(string input_file_path, int NKM[], float*& matrix1
 
 }
 
-
 void get_matrixs_transpose_from_file(string input_file_path, int NKM[], float*& matrix1, float*& matrix2, float*& resultMatrix) {
 
 	char* bufIterator = NULL;
@@ -1131,7 +1130,7 @@ void get_matrixs_transpose_from_file(string input_file_path, int NKM[], float*& 
 	float** matrix2Temp;
 	float** matrix2TempTranspose;
 
-	ifstream in("C:\\Users\\black\\Desktop\\matrix.txt", ios::binary);
+	ifstream in(input_file_path, ios::binary);
 	int size = in.seekg(0, ios::end).tellg();
 	if (size == -1)
 		throw "File is empty";
@@ -1292,7 +1291,7 @@ void get_matrixs_transpose_from_file_for_vector(string input_file_path, int NKM[
 	float** matrix2Temp;
 	float** matrix2TempTranspose;
 
-	ifstream in("C:\\Users\\black\\Desktop\\matrix.txt", ios::binary);
+	ifstream in(input_file_path, ios::binary);
 	int size = in.seekg(0, ios::end).tellg();
 	if (size == -1)
 		throw "File is empty";
@@ -1650,6 +1649,11 @@ void write_matrix_to_file() {
 		bin.write(outputArray, sizeof(char) * outputData.size());
 		bin.close();
 	}
+	else if (numberOfRealization == 4) {
+		fstream bin(pathOutputFile/*"C:\\Users\\black\\Desktop\\matrixResult2.txt"*/, ios::out | ios::binary);
+		bin.write(outputArray, sizeof(char) * outputData.size());
+		bin.close();
+	}
 
 	//free(outputArray);
 
@@ -1730,7 +1734,7 @@ void get_matrixs_from_file(string input_file_path, int NKM[], float*& matrix1, f
 	char* bufIterator = NULL;
 	char* buf = NULL;
 
-	ifstream in("C:\\Users\\black\\Desktop\\matrix.txt", ios::binary);
+	ifstream in(input_file_path, ios::binary);
 	int size = in.seekg(0, ios::end).tellg();
 	if (size == -1)
 		throw "File is empty";
@@ -1872,7 +1876,7 @@ cl_device_id InformationAboutDevice(cl_platform_id* platformID, int numberOfDevi
 {
 	cl_uint platformCount;
 	int err = clGetPlatformIDs(0, NULL, &platformCount);//gets number of available platforms
-	printf("\nNumber of platforms - %i\n", platformCount);
+	//printf("\nNumber of platforms - %i\n", platformCount);
 	cl_platform_id* platforms = (cl_platform_id*)malloc(platformCount);
 	clGetPlatformIDs(platformCount, platforms, NULL);//gets platform ids
 
@@ -1989,37 +1993,37 @@ void DeviceInfo(cl_device_id deviceID) {//вывод инфы в консоль
 	status = clGetDeviceInfo(deviceID, CL_DEVICE_BUILT_IN_KERNELS, 0, NULL, &kernelsNumberSize);
 	char* kernels = (char*)malloc(kernelsNumberSize);
 	status = clGetDeviceInfo(deviceID, CL_DEVICE_BUILT_IN_KERNELS, kernelsNumberSize, kernels, NULL);
-	printf("\nCL_DEVICE_BUILT_IN_KERNELS - %s\n", kernels);
+	//printf("\nCL_DEVICE_BUILT_IN_KERNELS - %s\n", kernels);
 
 	//global cache size 
 	cl_ulong globalCacheSize;
 	status = clGetDeviceInfo(deviceID, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, sizeof(globalCacheSize), &globalCacheSize, NULL);
-	printf("\nCL_DEVICE_GLOBAL_MEM_CACHE_SIZE - %llu bytes\n", (unsigned long long)globalCacheSize);
+	//printf("\nCL_DEVICE_GLOBAL_MEM_CACHE_SIZE - %llu bytes\n", (unsigned long long)globalCacheSize);
 
 	//global memory size 
 	cl_ulong globalMemSize;
 	status = clGetDeviceInfo(deviceID, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(globalMemSize), &globalMemSize, NULL);
-	printf("\nCL_DEVICE_GLOBAL_MEM_SIZE - %llu bytes\n", (unsigned long long)globalMemSize);
+	//printf("\nCL_DEVICE_GLOBAL_MEM_SIZE - %llu bytes\n", (unsigned long long)globalMemSize);
 
 	//local memory size 
 	cl_ulong localMemSize;
 	status = clGetDeviceInfo(deviceID, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(localMemSize), &localMemSize, NULL);
-	printf("\nCL_DEVICE_LOCAL_MEM_SIZE - %llu bytes\n", (unsigned long long)localMemSize);
+	//printf("\nCL_DEVICE_LOCAL_MEM_SIZE - %llu bytes\n", (unsigned long long)localMemSize);
 
 	//CL_DEVICE_MAX_COMPUTE_UNITS 
 	cl_uint numberOfComputeUnits;//количество аппаратных групп видеокарты
 	status = clGetDeviceInfo(deviceID, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(numberOfComputeUnits), &numberOfComputeUnits, NULL);
-	printf("\nCL_DEVICE_MAX_COMPUTE_UNITS - %u units\n", (unsigned int)numberOfComputeUnits);
+	//printf("\nCL_DEVICE_MAX_COMPUTE_UNITS - %u units\n", (unsigned int)numberOfComputeUnits);
 
 	//CL_DEVICE_MAX_WORK_GROUP_SIZE
 	size_t maxWorkGroupElementsCount;
 	status = clGetDeviceInfo(deviceID, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroupElementsCount), &maxWorkGroupElementsCount, NULL);
-	printf("\nCL_DEVICE_MAX_WORK_GROUP_SIZE - %u units\n", (unsigned int)maxWorkGroupElementsCount);
+	//printf("\nCL_DEVICE_MAX_WORK_GROUP_SIZE - %u units\n", (unsigned int)maxWorkGroupElementsCount);
 
 	//CL_DEVICE_MAX_WORK_ITEM_SIZES
 	size_t maxWorkItemSize[3];
 	status = clGetDeviceInfo(deviceID, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(maxWorkItemSize), maxWorkItemSize, NULL);
-	printf("\nCL_DEVICE_MAX_WORK_ITEM_SIZES - %d:%d:%d\n", maxWorkItemSize[0], maxWorkItemSize[1], maxWorkItemSize[2]);
+	//printf("\nCL_DEVICE_MAX_WORK_ITEM_SIZES - %d:%d:%d\n", maxWorkItemSize[0], maxWorkItemSize[1], maxWorkItemSize[2]);
 
 	free(deviceName);
 	free(kernels);
@@ -2036,25 +2040,25 @@ void KernelInfo(cl_kernel kernel, cl_device_id deviceID) {
 	cl_int status = 0;
 	status = clGetKernelWorkGroupInfo(kernel, deviceID, CL_KERNEL_WORK_GROUP_SIZE, sizeof(kernelWorkGroupSize)
 		, &kernelWorkGroupSize, NULL);
-	printf("\nCL_KERNEL_WORK_GROUP_SIZE - %u\n", (unsigned int)kernelWorkGroupSize);
+	//printf("\nCL_KERNEL_WORK_GROUP_SIZE - %u\n", (unsigned int)kernelWorkGroupSize);
 
 	//kernel local memory size
 	cl_ulong kernelLocalMemSize;
 	status = clGetKernelWorkGroupInfo(kernel, deviceID, CL_KERNEL_LOCAL_MEM_SIZE, sizeof(kernelLocalMemSize)
 		, &kernelLocalMemSize, NULL);
-	printf("\nCL_KERNEL_LOCAL_MEM_SIZE - %llu\n", (unsigned long long)kernelLocalMemSize);
+	//printf("\nCL_KERNEL_LOCAL_MEM_SIZE - %llu\n", (unsigned long long)kernelLocalMemSize);
 
 	//kernel numbers
 	size_t kernelPreferredWorkSize;
 	status = clGetKernelWorkGroupInfo(kernel, deviceID, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE,
 		sizeof(kernelPreferredWorkSize), &kernelPreferredWorkSize, NULL);
-	printf("\nCL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE - %u\n", (unsigned int)kernelPreferredWorkSize);
+	//printf("\nCL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE - %u\n", (unsigned int)kernelPreferredWorkSize);
 
 	//kernel private memory size
 	cl_ulong kernelPrivateMemSize;
 	status = clGetKernelWorkGroupInfo(kernel, deviceID, CL_KERNEL_PRIVATE_MEM_SIZE, sizeof(kernelPrivateMemSize)
 		, &kernelPrivateMemSize, NULL);
-	printf("\nCL_KERNEL_PRIVATE_MEM_SIZE - %llu\n", (unsigned long long)kernelPrivateMemSize);
+	//printf("\nCL_KERNEL_PRIVATE_MEM_SIZE - %llu\n", (unsigned long long)kernelPrivateMemSize);
 
 	/////////////////////////////////////END KERNEL INFO/////////////////////////////////////
 }

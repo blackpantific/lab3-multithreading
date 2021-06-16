@@ -1,4 +1,4 @@
-//#define COLSROWS 2
+
 
 
 kernel void myGEMM3(const global float* A, const global float* B, global float* C,
